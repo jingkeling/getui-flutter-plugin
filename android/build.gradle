@@ -24,10 +24,13 @@ rootProject.allprojects {
 }
 apply plugin: 'com.android.library'
 android {
-    compileSdkVersion 28
+    compileSdkVersion 35
+
+    namespace "com.getui.getuiflut"
 
     defaultConfig {
         minSdkVersion 17
+        targetSdkVersion 35
     }
     
     lintOptions {
