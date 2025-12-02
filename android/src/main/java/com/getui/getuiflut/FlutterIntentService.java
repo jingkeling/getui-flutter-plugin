@@ -1,10 +1,11 @@
 package com.getui.getuiflut;
 
 import android.content.Context;
-import android.content.Intent;
-import android.os.Bundle;
 import android.util.Log;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.igexin.sdk.GTIntentService;
 import com.igexin.sdk.PushConsts;
 import com.igexin.sdk.Tag;
@@ -20,136 +21,66 @@ import com.igexin.sdk.message.UnBindAliasCmdMessage;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 推送服务处理类，继承自 GTIntentService，处理推送相关事件
+ */
 public class FlutterIntentService extends GTIntentService {
-   private String TAG = "intentService";
+    private static final String TAG = "FlutterIntentService";
+    private static final Gson GSON = new Gson();
+
     @Override
     public void onCreate() {
         super.onCreate();
-    }
-
-    @Override
-    public int onStartCommand(Intent intent, int i, int i1) {
-        if (intent != null) {
-            processOnHandleIntent(this, intent);
-        }
-        return START_NOT_STICKY;
-    }
-
-    public void processOnHandleIntent(Context context, Intent intent) {
-        if (intent == null || context == null) {
-            Log.e(TAG, "onHandleIntent() context or intent is null");
-            return;
-        }
-
-        try {
-            Bundle bundle = intent.getExtras();
-            if (bundle == null || bundle.get("action") == null || !(bundle.get("action") instanceof Integer)) {
-                Log.d(TAG, "onHandleIntent, receive intent error");
-                return;
-            }
-
-            int action = bundle.getInt(PushConsts.CMD_ACTION);
-
-            Log.d(TAG, "onHandleIntent() action = " + action);
-
-            context = context.getApplicationContext();
-
-            switch (action) {
-                case PushConsts.GET_MSG_DATA:
-                    onReceiveMessageData(context, (GTTransmitMessage) intent.getSerializableExtra(PushConsts.KEY_MESSAGE_DATA));
-                    Log.d(TAG, "onHandleIntent() = received msg data ");
-                    break;
-
-                case PushConsts.GET_CLIENTID:
-                    onReceiveClientId(context, bundle.getString(PushConsts.KEY_CLIENT_ID));
-                    Log.d(TAG, "onHandleIntent() = received client id ");
-                    break;
-
-                case PushConsts.GET_DEVICETOKEN:
-                    onReceiveDeviceToken(context, bundle.getString(PushConsts.KEY_DEVICE_TOKEN));
-                    Log.d(TAG, "onHandleIntent() = received device token ");
-                    break;
-
-                case PushConsts.GET_SDKONLINESTATE:
-                    onReceiveOnlineState(context, bundle.getBoolean(PushConsts.KEY_ONLINE_STATE));
-                    break;
-
-                case PushConsts.GET_SDKSERVICEPID:
-                    onReceiveServicePid(context, bundle.getInt(PushConsts.KEY_SERVICE_PIT));
-                    Log.d(TAG, "onHandleIntent() = get sdk service pid ");
-                    break;
-
-                case PushConsts.KEY_CMD_RESULT:
-                    onReceiveCommandResult(context, (GTCmdMessage) intent.getSerializableExtra(PushConsts.KEY_CMD_MSG));
-                    Log.d(TAG, "onHandleIntent() = " + intent.getSerializableExtra(PushConsts.KEY_CMD_MSG).getClass().getSimpleName());
-                    break;
-
-                case PushConsts.ACTION_NOTIFICATION_ARRIVED:
-                    onNotificationMessageArrived(context, (GTNotificationMessage) intent.getSerializableExtra(PushConsts.KEY_NOTIFICATION_ARRIVED));
-                    Log.d(TAG, "onHandleIntent() = notification arrived ");
-                    break;
-
-                case PushConsts.ACTION_NOTIFICATION_CLICKED:
-                    onNotificationMessageClicked(context, (GTNotificationMessage) intent.getSerializableExtra(PushConsts.KEY_NOTIFICATION_CLICKED));
-                    Log.d(TAG, "onHandleIntent() notification clicked ");
-                    break;
-
-                default:
-                    break;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, e.getMessage());
-        }
+        log("Service created");
     }
 
     @Override
     public void onReceiveServicePid(Context context, int pid) {
-        Log.d(TAG, "onReceiveServicePid -> " + pid);
-
+        log("Received service PID: " + pid);
     }
 
     @Override
-    public void onReceiveClientId(Context context, String clientid) {
-        Log.e(TAG, "onReceiveClientId -> " + "clientid = " + clientid);
-        GetuiflutPlugin.transmitMessageReceive(clientid, "onReceiveClientId");
+    public void onReceiveClientId(Context context, String clientId) {
+        log("Received client ID: " + clientId);
+        GetuiflutPlugin.transmitMessageReceive(clientId, GetuiflutPlugin.StateType.onReceiveClientId);
     }
 
     @Override
     public void onReceiveMessageData(Context context, GTTransmitMessage msg) {
-        Log.d(TAG, "onReceiveMessageData -> " + "appid = " + msg.getAppid() + "\ntaskid = " + msg.getTaskId() + "\nmessageid = " + msg.getMessageId() + "\npkg = " + msg.getPkgName()
-                + "\ncid = " + msg.getClientId() + "\npayload:" + new String(msg.getPayload()));
+        log("Received message data");
         Map<String, Object> payload = new HashMap<>();
         payload.put("messageId", msg.getMessageId());
         payload.put("payload", new String(msg.getPayload()));
         payload.put("payloadId", msg.getPayloadId());
         payload.put("taskId", msg.getTaskId());
-        GetuiflutPlugin.transmitMessageReceive(payload, "onReceiveMessageData");
+        GetuiflutPlugin.transmitMessageReceive(GSON.toJson(payload), GetuiflutPlugin.StateType.onReceivePayload);
     }
 
     @Override
-    public void onReceiveOnlineState(Context context, boolean b) {
-        GetuiflutPlugin.transmitMessageReceive(String.valueOf(b), "onReceiveOnlineState");
+    public void onReceiveOnlineState(Context context, boolean online) {
+        log("Received online state: " + online);
+        GetuiflutPlugin.transmitMessageReceive(String.valueOf(online), GetuiflutPlugin.StateType.onReceiveOnlineState);
     }
 
     @Override
     public void onReceiveCommandResult(Context context, GTCmdMessage gtCmdMessage) {
         int action = gtCmdMessage.getAction();
         if (action == PushConsts.SET_TAG_RESULT) {
-            GetuiflutPlugin.transmitMessageReceive(getTagResult((SetTagCmdMessage) gtCmdMessage), "onSetTagResult");
+            GetuiflutPlugin.transmitMessageReceive(getTagResult((SetTagCmdMessage) gtCmdMessage), GetuiflutPlugin.StateType.onSetTagResult);
         } else if (action == PushConsts.BIND_ALIAS_RESULT) {
-            GetuiflutPlugin.transmitMessageReceive(bindAliasResult((BindAliasCmdMessage) gtCmdMessage),"onAliasResult");
+            GetuiflutPlugin.transmitMessageReceive(bindAliasResult((BindAliasCmdMessage) gtCmdMessage),GetuiflutPlugin.StateType.onAliasResult);
         } else if (action == PushConsts.UNBIND_ALIAS_RESULT) {
-            GetuiflutPlugin.transmitMessageReceive(unBindAliasResult((UnBindAliasCmdMessage) gtCmdMessage),"onAliasResult");
+            GetuiflutPlugin.transmitMessageReceive(unBindAliasResult((UnBindAliasCmdMessage) gtCmdMessage),GetuiflutPlugin.StateType.onAliasResult);
         } else if ((action == PushConsts.THIRDPART_FEEDBACK)) {
-            GetuiflutPlugin.transmitMessageReceive(feedbackResult((FeedbackCmdMessage) gtCmdMessage),"thirdPartFeedback");
+            GetuiflutPlugin.transmitMessageReceive(feedbackResult((FeedbackCmdMessage) gtCmdMessage),GetuiflutPlugin.StateType.thirdPartFeedback);
         }else if(action == PushConsts.QUERY_TAG_RESULT){
-            GetuiflutPlugin.transmitMessageReceive(onQueryTagResult((QueryTagCmdMessage) gtCmdMessage), "onQueryTagResult");
+            GetuiflutPlugin.transmitMessageReceive(onQueryTagResult((QueryTagCmdMessage) gtCmdMessage), GetuiflutPlugin.StateType.onQueryTagResult);
         }
 
 
     }
 
-    private Map<String, Object> onQueryTagResult(QueryTagCmdMessage gtCmdMessage) {
+    private String onQueryTagResult(QueryTagCmdMessage gtCmdMessage) {
         String code = gtCmdMessage.getCode();
         String sn = gtCmdMessage.getSn();
         Tag[] tags = gtCmdMessage.getTags();
@@ -158,10 +89,10 @@ public class FlutterIntentService extends GTIntentService {
         map.put("result",Integer.parseInt(code)==0);
         map.put("code",Integer.parseInt(code));
         map.put("tags",tags);
-        return map;
+        return GSON.toJson(map);
     }
 
-    private Map<String, Object> feedbackResult(FeedbackCmdMessage feedbackCmdMsg) {
+    private String feedbackResult(FeedbackCmdMessage feedbackCmdMsg) {
         String appid = feedbackCmdMsg.getAppid();
         String taskid = feedbackCmdMsg.getTaskId();
         String actionid = feedbackCmdMsg.getActionId();
@@ -176,10 +107,10 @@ public class FlutterIntentService extends GTIntentService {
         map.put("result",result);
         map.put("timestamp",timestamp);
         map.put("cid",cid);
-        return map;
+        return GSON.toJson(map);
     }
 
-    private Map<String, Object> unBindAliasResult(UnBindAliasCmdMessage gtCmdMessage) {
+    private String unBindAliasResult(UnBindAliasCmdMessage gtCmdMessage) {
         String sn = gtCmdMessage.getSn();
         String code = gtCmdMessage.getCode();
 
@@ -221,10 +152,10 @@ public class FlutterIntentService extends GTIntentService {
         map.put("result",Integer.parseInt(code)==0);
         map.put("code",Integer.parseInt(code));
         map.put("message",getResources().getString(text));
-        return map;
+        return GSON.toJson(map);
     }
 
-    private Map<String, Object> bindAliasResult(BindAliasCmdMessage gtCmdMessage) {
+    private String bindAliasResult(BindAliasCmdMessage gtCmdMessage) {
         String sn = gtCmdMessage.getSn();
         String code = gtCmdMessage.getCode();
 
@@ -266,10 +197,10 @@ public class FlutterIntentService extends GTIntentService {
         map.put("result",Integer.parseInt(code)==0);
         map.put("code",Integer.parseInt(code));
         map.put("message",getResources().getString(text));
-        return map;
+        return GSON.toJson(map);
     }
 
-    private Map<String, Object> getTagResult(SetTagCmdMessage gtCmdMessage) {
+    private String getTagResult(SetTagCmdMessage gtCmdMessage) {
         String sn = gtCmdMessage.getSn();
         String code = gtCmdMessage.getCode();
         int text = R.string.add_tag_unknown_exception;
@@ -316,32 +247,68 @@ public class FlutterIntentService extends GTIntentService {
         map.put("result",Integer.parseInt(code)==0);
         map.put("code",Integer.parseInt(code));
         map.put("message",getResources().getString(text));
-        return map;
+        return GSON.toJson(map);
     }
 
     @Override
     public void onNotificationMessageArrived(Context context, GTNotificationMessage message) {
-        Log.d(TAG, "onNotificationMessageArrived -> " + "appid = " + message.getAppid() + "\ntaskid = " + message.getTaskId() + "\nmessageid = "
-                + message.getMessageId() + "\npkg = " + message.getPkgName() + "\ncid = " + message.getClientId() + "\ntitle = "
-                + message.getTitle() + "\ncontent = " + message.getContent());
+        log("Notification arrived");
         Map<String, Object> notification = new HashMap<String, Object>();
         notification.put("messageId",message.getMessageId());
         notification.put("taskId",message.getTaskId());
         notification.put("title",message.getTitle());
         notification.put("content",message.getContent());
-        GetuiflutPlugin.transmitMessageReceive(notification, "onNotificationMessageArrived");
+        GetuiflutPlugin.transmitMessageReceive(GSON.toJson(notification), GetuiflutPlugin.StateType.onNotificationMessageArrived);
     }
 
     @Override
     public void onNotificationMessageClicked(Context context, GTNotificationMessage message) {
-        Log.d(TAG, "onNotificationMessageClicked -> " + "appid = " + message.getAppid() + "\ntaskid = " + message.getTaskId() + "\nmessageid = "
-                + message.getMessageId() + "\npkg = " + message.getPkgName() + "\ncid = " + message.getClientId() + "\ntitle = "
-                + message.getTitle() + "\ncontent = " + message.getContent());
+        log("Notification clicked");
         Map<String, Object> notification = new HashMap<String, Object>();
         notification.put("messageId",message.getMessageId());
         notification.put("taskId",message.getTaskId());
         notification.put("title",message.getTitle());
         notification.put("content",message.getContent());
-        GetuiflutPlugin.transmitMessageReceive(notification, "onNotificationMessageClicked");
+        GetuiflutPlugin.transmitMessageReceive(GSON.toJson(notification), GetuiflutPlugin.StateType.onNotificationMessageClicked);
+    }
+
+    // 统一日志记录方法
+    private void log(String message) {
+        Log.d(TAG, message);
+    }
+
+    // 获取设置标签的提示信息资源 ID
+    private int getMessageResIdForTag(String code) {
+        switch (Integer.parseInt(code)) {
+            case PushConsts.SETTAG_SUCCESS: return R.string.add_tag_success;
+            case PushConsts.SETTAG_ERROR_COUNT: return R.string.add_tag_error_count;
+            case PushConsts.SETTAG_ERROR_FREQUENCY: return R.string.add_tag_error_frequency;
+            case PushConsts.SETTAG_ERROR_REPEAT: return R.string.add_tag_error_repeat;
+            case PushConsts.SETTAG_ERROR_UNBIND: return R.string.add_tag_error_unbind;
+            case PushConsts.SETTAG_ERROR_EXCEPTION: return R.string.add_tag_unknown_exception;
+            case PushConsts.SETTAG_ERROR_NULL: return R.string.add_tag_error_null;
+            case PushConsts.SETTAG_NOTONLINE: return R.string.add_tag_error_not_online;
+            case PushConsts.SETTAG_IN_BLACKLIST: return R.string.add_tag_error_black_list;
+            case PushConsts.SETTAG_NUM_EXCEED: return R.string.add_tag_error_exceed;
+            case PushConsts.SETTAG_TAG_ILLEGAL: return R.string.add_tag_error_tagIllegal;
+            default: return R.string.add_tag_unknown_exception;
+        }
+    }
+
+    // 获取别名操作的提示信息资源 ID
+    private int getMessageResIdForAlias(String code, boolean isBind) {
+        int baseResId = isBind ? R.string.bind_alias_unknown_exception : R.string.unbind_alias_unknown_exception;
+        switch (Integer.parseInt(code)) {
+            case PushConsts.BIND_ALIAS_SUCCESS: return isBind ? R.string.bind_alias_success : R.string.unbind_alias_success;
+            case PushConsts.ALIAS_ERROR_FREQUENCY: return isBind ? R.string.bind_alias_error_frequency : R.string.unbind_alias_error_frequency;
+            case PushConsts.ALIAS_OPERATE_PARAM_ERROR: return isBind ? R.string.bind_alias_error_param_error : R.string.unbind_alias_error_param_error;
+            case PushConsts.ALIAS_REQUEST_FILTER: return isBind ? R.string.bind_alias_error_request_filter : R.string.unbind_alias_error_request_filter;
+            case PushConsts.ALIAS_OPERATE_ALIAS_FAILED: return baseResId;
+            case PushConsts.ALIAS_CID_LOST: return isBind ? R.string.bind_alias_error_cid_lost : R.string.unbind_alias_error_cid_lost;
+            case PushConsts.ALIAS_CONNECT_LOST: return isBind ? R.string.bind_alias_error_connect_lost : R.string.unbind_alias_error_connect_lost;
+            case PushConsts.ALIAS_INVALID: return isBind ? R.string.bind_alias_error_alias_invalid : R.string.unbind_alias_error_alias_invalid;
+            case PushConsts.ALIAS_SN_INVALID: return isBind ? R.string.bind_alias_error_sn_invalid : R.string.unbind_alias_error_sn_invalid;
+            default: return baseResId;
+        }
     }
 }
